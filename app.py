@@ -170,6 +170,10 @@ if data_source == "Use Sample Dataset":
             st.session_state.data_loaded = True
             st.session_state.df = df
             st.session_state.is_sample = True
+            # Clear any previous model training when switching to sample dataset
+            if 'last_data_source' in st.session_state and st.session_state.last_data_source != "Use Sample Dataset":
+                st.session_state.models_trained = False
+            st.session_state.last_data_source = "Use Sample Dataset"
 elif uploaded_file is not None:
     # Load uploaded file
     df = load_data(uploaded_file, False)
@@ -177,10 +181,18 @@ elif uploaded_file is not None:
         st.session_state.data_loaded = True
         st.session_state.df = df
         st.session_state.is_sample = False
+        # Clear any previous model training when switching to uploaded file
+        if 'last_data_source' in st.session_state and st.session_state.last_data_source != "Upload CSV File":
+            st.session_state.models_trained = False
+        st.session_state.last_data_source = "Upload CSV File"
 else:
     # User selected upload but hasn't uploaded a file yet
     st.session_state.data_loaded = False
     st.session_state.is_sample = False
+    # Clear any previous model training when switching to upload mode without file
+    if 'last_data_source' in st.session_state and st.session_state.last_data_source != "Upload CSV File":
+        st.session_state.models_trained = False
+    st.session_state.last_data_source = "Upload CSV File"
 
 # Display dataset info
 if st.session_state.data_loaded:
@@ -409,27 +421,38 @@ if st.session_state.models_trained:
     fig.update_layout(xaxis_tickangle=-45)
     st.plotly_chart(fig, use_container_width=True)
 
-    # Radar chart
-    st.markdown("### 🎯 Radar Chart Comparison")
 
-    fig = go.Figure()
+    # Performance Heatmap
+    st.markdown("### 🔥 Performance Heatmap")
+    st.markdown("*Darker colors indicate better performance*")
 
-    for _, row in results_df.iterrows():
-        model_name = row['ML Model Name']
-        values = [float(row[metric]) for metric in metrics_for_plot]
+    # Prepare heatmap data
+    heatmap_data = results_df.copy()
+    heatmap_data = heatmap_data.set_index('ML Model Name')
 
-        fig.add_trace(go.Scatterpolar(
-            r=values,
-            theta=metrics_for_plot,
-            fill='toself',
-            name=model_name
-        ))
+    # Convert to numeric
+    for col in metrics_for_plot:
+        heatmap_data[col] = heatmap_data[col].astype(float)
+
+    # Create heatmap
+    fig = go.Figure(data=go.Heatmap(
+        z=heatmap_data[metrics_for_plot].values,
+        x=metrics_for_plot,
+        y=heatmap_data.index,
+        colorscale='RdYlGn',  # Red-Yellow-Green colorscale
+        text=heatmap_data[metrics_for_plot].values,
+        texttemplate='%{text:.3f}',
+        textfont={"size": 11},
+        colorbar=dict(title="Score"),
+        hoverongaps=False
+    ))
 
     fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-        showlegend=True,
-        title="Model Performance Radar Chart",
-        height=600
+        title="Model Performance Heatmap - All Metrics",
+        xaxis_title="Metrics",
+        yaxis_title="Models",
+        height=400,
+        xaxis={'side': 'bottom'}
     )
 
     st.plotly_chart(fig, use_container_width=True)
@@ -550,12 +573,109 @@ if st.session_state.models_trained:
 
     st.markdown(table_html, unsafe_allow_html=True)
 
+else:
+    # Show helpful message only when Upload CSV File is selected but no file is uploaded
+    if data_source == "Upload CSV File":
+        st.markdown('<h2 class="sub-header">📂 Upload Your Dataset</h2>', unsafe_allow_html=True)
+
+        st.info("""
+        👈 **Please upload a CSV or Excel file from the sidebar to get started.**
+
+        Your dataset should meet the following requirements:
+        - **Minimum 500 instances (rows)**
+        - **Minimum 12 features (columns)**
+        - Must include a **target variable** for classification
+        """)
+
+        st.markdown("---")
+
+        st.markdown("### 📋 Dataset Requirements")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("""
+            #### ✅ Supported Formats
+            - CSV files (`.csv`)
+            - Excel files (`.xlsx`, `.xls`)
+
+            #### 📊 Data Requirements
+            - Minimum **500 rows** (instances)
+            - Minimum **12 columns** (features)
+            - One column as **target variable**
+            - Can include both numeric and categorical features
+            """)
+
+        with col2:
+            st.markdown("""
+            #### 🎯 What You'll Get
+            - **6 ML Models** trained and compared:
+              - Logistic Regression
+              - Decision Tree
+              - K-Nearest Neighbors (KNN)
+              - Naive Bayes
+              - Random Forest
+              - XGBoost
+
+            - **Comprehensive Metrics**:
+              - Accuracy, AUC Score
+              - Precision, Recall, F1 Score
+              - Matthews Correlation Coefficient (MCC)
+
+            - **Interactive Visualizations**:
+              - Performance comparison charts
+              - Confusion matrices
+              - Model insights
+            """)
+
+        st.markdown("---")
+
+        st.markdown("### 💡 Quick Start Options")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("""
+            #### 🚀 Option 1: Use Sample Dataset
+            Want to see how it works first?
+
+            👈 Switch to **"Use Sample Dataset"** in the sidebar to explore the dashboard with a pre-loaded dataset.
+            """)
+
+        with col2:
+            st.markdown("""
+            #### 📤 Option 2: Upload Your Data
+            Ready with your own data?
+
+            👈 Click **"Browse files"** in the sidebar to upload your CSV or Excel file and start training models!
+            """)
+
+        st.markdown("---")
+
+        # Add a sample data format example
+        st.markdown("### 📝 Example Dataset Format")
+        st.markdown("*Your dataset should look something like this:*")
+
+        # Create a sample dataframe to show expected format
+        sample_data = {
+            'feature_1': [1.2, 3.4, 5.6, 7.8, 9.0],
+            'feature_2': [10, 20, 30, 40, 50],
+            'feature_3': ['A', 'B', 'A', 'C', 'B'],
+            'feature_4': [0.1, 0.2, 0.3, 0.4, 0.5],
+            '...': ['...', '...', '...', '...', '...'],
+            'feature_12': [100, 200, 300, 400, 500],
+            'target': [0, 1, 0, 1, 0]
+        }
+        sample_df = pd.DataFrame(sample_data)
+        st.dataframe(sample_df, use_container_width=True, hide_index=True)
+
+        st.caption("💡 **Tip:** The last column is typically your target variable (what you want to predict), but you can select any column as the target after uploading.")
+
 # Footer
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 2rem 0;'>
     <p><strong>ML Classification Model Comparison Dashboard</strong></p>
-    <p>Built with Streamlit 🎈 | scikit-learn | XGBoost</p>
 </div>
 """, unsafe_allow_html=True)
 
