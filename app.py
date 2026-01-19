@@ -200,6 +200,52 @@ else:
             del st.session_state.auto_loaded
     st.session_state.last_data_source = "Upload CSV File"
 
+    # Show upload instructions and download sample in main area
+    st.markdown('<h2 class="sub-header">📤 Upload Your Dataset</h2>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.info("👈 Please upload a CSV or Excel file using the file uploader in the sidebar.")
+        st.markdown("""
+        **Requirements:**
+        - ✅ Minimum 500 instances
+        - ✅ Minimum 12 features
+        - ✅ CSV or Excel format
+        - ✅ Must include a target column
+        """)
+
+    with col2:
+        st.markdown("### 💡 Download our sample!")
+        st.markdown("""
+        **Spambase Dataset**
+        - 📊 4,601 instances
+        - 📈 58 features (57 + target)
+        - 🎯 Binary classification (spam detection)
+        - ✅ Ready to use
+        """)
+
+        # Load the spambase dataset for download
+        try:
+            import os
+            csv_path = os.path.join('data', 'spambase.csv')
+            if os.path.exists(csv_path):
+                with open(csv_path, 'rb') as f:
+                    csv_data = f.read()
+                st.download_button(
+                    label="📥 Download Sample Dataset",
+                    data=csv_data,
+                    file_name="spambase_sample.csv",
+                    mime="text/csv",
+                    help="Download the Spambase dataset to test the app",
+                    use_container_width=True
+                )
+                st.caption("↩️ After downloading, upload using the sidebar!")
+            else:
+                st.warning("⚠️ Sample dataset not available locally.")
+        except Exception as e:
+            st.error(f"❌ Could not load sample: {str(e)}")
+
 # Display dataset info
 if st.session_state.data_loaded:
     df = st.session_state.df
@@ -620,103 +666,6 @@ if st.session_state.models_trained:
 
     st.markdown(table_html, unsafe_allow_html=True)
 
-else:
-    # Show helpful message only when Upload CSV File is selected but no file is uploaded
-    if data_source == "Upload CSV File":
-        st.markdown('<h2 class="sub-header">📂 Upload Your Dataset</h2>', unsafe_allow_html=True)
-
-        st.info("""
-        👈 **Please upload a CSV or Excel file from the sidebar to get started.**
-
-        Your dataset should meet the following requirements:
-        - **Minimum 500 instances (rows)**
-        - **Minimum 12 features (columns)**
-        - Must include a **target variable** for classification
-        """)
-
-        st.markdown("---")
-
-        st.markdown("### 📋 Dataset Requirements")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("""
-            #### ✅ Supported Formats
-            - CSV files (`.csv`)
-            - Excel files (`.xlsx`, `.xls`)
-
-            #### 📊 Data Requirements
-            - Minimum **500 rows** (instances)
-            - Minimum **12 columns** (features)
-            - One column as **target variable**
-            - Can include both numeric and categorical features
-            """)
-
-        with col2:
-            st.markdown("""
-            #### 🎯 What You'll Get
-            - **6 ML Models** trained and compared:
-              - Logistic Regression
-              - Decision Tree
-              - K-Nearest Neighbors (KNN)
-              - Naive Bayes
-              - Random Forest
-              - XGBoost
-
-            - **Comprehensive Metrics**:
-              - Accuracy, AUC Score
-              - Precision, Recall, F1 Score
-              - Matthews Correlation Coefficient (MCC)
-
-            - **Interactive Visualizations**:
-              - Performance comparison charts
-              - Confusion matrices
-              - Model insights
-            """)
-
-        st.markdown("---")
-
-        st.markdown("### 💡 Quick Start Options")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("""
-            #### 🚀 Option 1: Use Sample Dataset
-            Want to see how it works first?
-
-            👈 Switch to **"Use Sample Dataset"** in the sidebar to explore the dashboard with a pre-loaded dataset.
-            """)
-
-        with col2:
-            st.markdown("""
-            #### 📤 Option 2: Upload Your Data
-            Ready with your own data?
-
-            👈 Click **"Browse files"** in the sidebar to upload your CSV or Excel file and start training models!
-            """)
-
-        st.markdown("---")
-
-        # Add a sample data format example
-        st.markdown("### 📝 Example Dataset Format")
-        st.markdown("*Your dataset should look something like this:*")
-
-        # Create a sample dataframe to show expected format
-        sample_data = {
-            'feature_1': [1.2, 3.4, 5.6, 7.8, 9.0],
-            'feature_2': [10, 20, 30, 40, 50],
-            'feature_3': ['A', 'B', 'A', 'C', 'B'],
-            'feature_4': [0.1, 0.2, 0.3, 0.4, 0.5],
-            '...': ['...', '...', '...', '...', '...'],
-            'feature_12': [100, 200, 300, 400, 500],
-            'target': [0, 1, 0, 1, 0]
-        }
-        sample_df = pd.DataFrame(sample_data)
-        st.dataframe(sample_df, use_container_width=True, hide_index=True)
-
-        st.caption("💡 **Tip:** The last column is typically your target variable (what you want to predict), but you can select any column as the target after uploading.")
 
 # Footer
 st.markdown("---")
