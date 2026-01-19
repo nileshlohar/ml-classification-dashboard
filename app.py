@@ -173,6 +173,8 @@ if data_source == "Use Sample Dataset":
             # Clear any previous model training when switching to sample dataset
             if 'last_data_source' in st.session_state and st.session_state.last_data_source != "Use Sample Dataset":
                 st.session_state.models_trained = False
+                if 'auto_loaded' in st.session_state:
+                    del st.session_state.auto_loaded
             st.session_state.last_data_source = "Use Sample Dataset"
 elif uploaded_file is not None:
     # Load uploaded file
@@ -184,6 +186,8 @@ elif uploaded_file is not None:
         # Clear any previous model training when switching to uploaded file
         if 'last_data_source' in st.session_state and st.session_state.last_data_source != "Upload CSV File":
             st.session_state.models_trained = False
+            if 'auto_loaded' in st.session_state:
+                del st.session_state.auto_loaded
         st.session_state.last_data_source = "Upload CSV File"
 else:
     # User selected upload but hasn't uploaded a file yet
@@ -192,6 +196,8 @@ else:
     # Clear any previous model training when switching to upload mode without file
     if 'last_data_source' in st.session_state and st.session_state.last_data_source != "Upload CSV File":
         st.session_state.models_trained = False
+        if 'auto_loaded' in st.session_state:
+            del st.session_state.auto_loaded
     st.session_state.last_data_source = "Upload CSV File"
 
 # Display dataset info
@@ -270,105 +276,146 @@ if st.session_state.data_loaded:
             pretrained_files = [f for f in os.listdir(model_dir) if f.endswith('.pkl')]
             if len(pretrained_files) >= 6:
                 pretrained_available = True
-                st.info("ℹ️ **Pre-trained models detected!** You can load them instantly (⚡ Fast) or train new models from scratch.")
 
-    # Show option to load pre-trained models or train new ones
-    if len(selected_models) > 0:
-        col1, col2 = st.columns(2)
+    # Auto-load pre-trained models on initial load for sample dataset
+    if (pretrained_available and
+        not st.session_state.models_trained and
+        len(selected_models) > 0 and
+        'auto_loaded' not in st.session_state):
 
-        with col1:
-            if pretrained_available:
-                if st.button("⚡ Load Pre-trained Models (Fast)", type="primary", use_container_width=True):
-                    with st.spinner("📂 Loading pre-trained models..."):
-                        try:
-                            # Preprocess data for evaluation
-                            X_train, X_test, y_train, y_test, feature_names, label_encoder = preprocess_data(
-                                df, target_column, test_size=test_size/100, random_state=42  # Use same seed as training
-                            )
+        with st.spinner("📂 Loading pre-trained models..."):
+            try:
+                # Preprocess data for evaluation
+                X_train, X_test, y_train, y_test, feature_names, label_encoder = preprocess_data(
+                    df, target_column, test_size=test_size/100, random_state=42  # Use same seed as training
+                )
 
-                            # Initialize trainer
-                            trainer = ModelTrainer(random_state=42)
+                # Initialize trainer
+                trainer = ModelTrainer(random_state=42)
 
-                            # Load pre-trained models
-                            progress_bar = st.progress(0)
-                            status_text = st.empty()
+                # Load pre-trained models
+                progress_bar = st.progress(0)
+                status_text = st.empty()
 
-                            for idx, model_name in enumerate(selected_models):
-                                status_text.text(f"Loading {model_name}...")
-                                clean_name = model_name.lower().replace(' ', '_')
-                                filepath = os.path.join('model/saved_models', f'{clean_name}.pkl')
+                for idx, model_name in enumerate(selected_models):
+                    status_text.text(f"Loading {model_name}...")
+                    clean_name = model_name.lower().replace(' ', '_')
+                    filepath = os.path.join('model/saved_models', f'{clean_name}.pkl')
 
-                                if os.path.exists(filepath):
-                                    trainer.load_model(model_name, filepath)
-                                    trainer.evaluate_model(model_name, X_test, y_test)
-                                else:
-                                    st.warning(f"⚠️ Pre-trained model not found for {model_name}, training from scratch...")
-                                    trainer.train_model(model_name, X_train, y_train)
-                                    trainer.evaluate_model(model_name, X_test, y_test)
+                    if os.path.exists(filepath):
+                        trainer.load_model(model_name, filepath)
+                        trainer.evaluate_model(model_name, X_test, y_test)
+                    else:
+                        st.warning(f"⚠️ Pre-trained model not found for {model_name}, training from scratch...")
+                        trainer.train_model(model_name, X_train, y_train)
+                        trainer.evaluate_model(model_name, X_test, y_test)
 
-                                progress_bar.progress((idx + 1) / len(selected_models))
+                    progress_bar.progress((idx + 1) / len(selected_models))
 
-                            status_text.text("✅ All models loaded successfully!")
-                            progress_bar.empty()
-                            status_text.empty()
+                status_text.text("✅ All models loaded successfully!")
+                progress_bar.empty()
+                status_text.empty()
 
-                            # Store in session state
-                            st.session_state.models_trained = True
-                            st.session_state.trainer = trainer
-                            st.session_state.X_test = X_test
-                            st.session_state.y_test = y_test
-                            st.session_state.label_encoder = label_encoder
+                # Store in session state
+                st.session_state.models_trained = True
+                st.session_state.trainer = trainer
+                st.session_state.X_test = X_test
+                st.session_state.y_test = y_test
+                st.session_state.label_encoder = label_encoder
+                st.session_state.auto_loaded = True
 
-                            st.success("✅ Pre-trained models loaded and evaluated successfully!")
-                            st.rerun()
+                st.success("✅ Pre-trained models loaded and evaluated successfully!")
+                st.rerun()
 
-                        except Exception as e:
-                            st.error(f"❌ Error loading models: {str(e)}")
-                            import traceback
-                            st.code(traceback.format_exc())
+            except Exception as e:
+                st.error(f"❌ Error loading models: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
 
-        with col2:
-            if st.button("🚀 Train New Models", type="secondary", use_container_width=True):
-                with st.spinner("🔄 Training models... This may take a few moments..."):
-                    try:
-                        # Preprocess data
-                        X_train, X_test, y_train, y_test, feature_names, label_encoder = preprocess_data(
-                            df, target_column, test_size=test_size/100, random_state=random_seed
-                        )
+    # Show "Train New Models" button
+    if len(selected_models) > 0 and not st.session_state.models_trained:
+        if st.button("🚀 Train New Models", type="primary", use_container_width=True):
+            with st.spinner("🔄 Training models... This may take a few moments..."):
+                try:
+                    # Preprocess data
+                    X_train, X_test, y_train, y_test, feature_names, label_encoder = preprocess_data(
+                        df, target_column, test_size=test_size/100, random_state=random_seed
+                    )
 
-                        # Initialize trainer
-                        trainer = ModelTrainer(random_state=random_seed)
+                    # Initialize trainer
+                    trainer = ModelTrainer(random_state=random_seed)
 
-                        # Train only selected models
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
+                    # Train only selected models
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
 
-                        for idx, model_name in enumerate(selected_models):
-                            status_text.text(f"Training {model_name}...")
-                            trainer.train_model(model_name, X_train, y_train)
-                            trainer.evaluate_model(model_name, X_test, y_test)
-                            progress_bar.progress((idx + 1) / len(selected_models))
+                    for idx, model_name in enumerate(selected_models):
+                        status_text.text(f"Training {model_name}...")
+                        trainer.train_model(model_name, X_train, y_train)
+                        trainer.evaluate_model(model_name, X_test, y_test)
+                        progress_bar.progress((idx + 1) / len(selected_models))
 
-                        status_text.text("✅ All models trained successfully!")
-                        progress_bar.empty()
-                        status_text.empty()
+                    status_text.text("✅ All models trained successfully!")
+                    progress_bar.empty()
+                    status_text.empty()
 
-                        # Store in session state
-                        st.session_state.models_trained = True
-                        st.session_state.trainer = trainer
-                        st.session_state.X_test = X_test
-                        st.session_state.y_test = y_test
-                        st.session_state.label_encoder = label_encoder
+                    # Store in session state
+                    st.session_state.models_trained = True
+                    st.session_state.trainer = trainer
+                    st.session_state.X_test = X_test
+                    st.session_state.y_test = y_test
+                    st.session_state.label_encoder = label_encoder
 
-                        st.success("✅ All models trained and evaluated successfully!")
-                        st.rerun()
+                    st.success("✅ All models trained and evaluated successfully!")
+                    st.rerun()
 
-                    except Exception as e:
-                        st.error(f"❌ Error during training: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
-    else:
+                except Exception as e:
+                    st.error(f"❌ Error during training: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+    elif len(selected_models) == 0:
         st.warning("⚠️ Please select at least one model to train.")
+
+    # Show "Retrain Models" button when models are already trained
+    if st.session_state.models_trained and len(selected_models) > 0:
+        if st.button("🔄 Retrain Models", type="secondary", use_container_width=True):
+            with st.spinner("🔄 Retraining models... This may take a few moments..."):
+                try:
+                    # Preprocess data
+                    X_train, X_test, y_train, y_test, feature_names, label_encoder = preprocess_data(
+                        df, target_column, test_size=test_size/100, random_state=random_seed
+                    )
+
+                    # Initialize trainer
+                    trainer = ModelTrainer(random_state=random_seed)
+
+                    # Train only selected models
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+
+                    for idx, model_name in enumerate(selected_models):
+                        status_text.text(f"Training {model_name}...")
+                        trainer.train_model(model_name, X_train, y_train)
+                        trainer.evaluate_model(model_name, X_test, y_test)
+                        progress_bar.progress((idx + 1) / len(selected_models))
+
+                    status_text.text("✅ All models retrained successfully!")
+                    progress_bar.empty()
+                    status_text.empty()
+
+                    # Store in session state
+                    st.session_state.trainer = trainer
+                    st.session_state.X_test = X_test
+                    st.session_state.y_test = y_test
+                    st.session_state.label_encoder = label_encoder
+
+                    st.success("✅ All models retrained and evaluated successfully!")
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ Error during training: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
 
 # Display results
 if st.session_state.models_trained:
