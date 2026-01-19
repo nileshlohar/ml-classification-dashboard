@@ -83,7 +83,7 @@ def preprocess_data(df, target_column, test_size=0.2, random_state=42):
 
 def get_sample_dataset():
     """
-    Load Spambase dataset from UCI Machine Learning Repository
+    Load Spambase dataset from local file (for faster loading)
 
     Dataset Details:
     - Source: UCI Machine Learning Repository
@@ -108,14 +108,26 @@ def get_sample_dataset():
         pandas DataFrame with spambase data
     """
     import warnings
+    import os
     warnings.filterwarnings('ignore')
 
-    # Try loading from UCI repository
+    # Try loading from local file first (much faster!)
+    local_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'spambase.csv')
+
+    try:
+        if os.path.exists(local_path):
+            # Load from local CSV (fast!)
+            df = pd.read_csv(local_path)
+            df['target'] = df['target'].astype(int)
+            return df
+    except Exception as e:
+        print(f"⚠️  Could not load from local file: {e}")
+
+    # Fallback: Try loading from UCI repository
     try:
         url = "https://archive.ics.uci.edu/ml/machine-learning-databases/spambase/spambase.data"
 
         # Define column names (57 features + 1 target)
-        # Word frequency features (0-47)
         word_features = [
             'word_freq_make', 'word_freq_address', 'word_freq_all', 'word_freq_3d',
             'word_freq_our', 'word_freq_over', 'word_freq_remove', 'word_freq_internet',
@@ -131,26 +143,21 @@ def get_sample_dataset():
             'word_freq_re', 'word_freq_edu', 'word_freq_table', 'word_freq_conference'
         ]
 
-        # Character frequency features (48-53)
         char_features = [
             'char_freq_semicolon', 'char_freq_parenthesis', 'char_freq_bracket',
             'char_freq_exclamation', 'char_freq_dollar', 'char_freq_hash'
         ]
 
-        # Capital letter features (54-56)
         capital_features = [
             'capital_run_length_average',
             'capital_run_length_longest',
             'capital_run_length_total'
         ]
 
-        # All column names
         column_names = word_features + char_features + capital_features + ['target']
 
-        # Load dataset
+        # Load dataset from UCI
         df = pd.read_csv(url, header=None, names=column_names)
-
-        # Ensure target is integer
         df['target'] = df['target'].astype(int)
 
         return df

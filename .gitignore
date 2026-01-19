@@ -55,7 +55,11 @@ venv.bak/
 *.csv
 *.xlsx
 *.xls
+*.data
 !sample_data.csv
+
+# Exception: Allow spambase dataset for Streamlit deployment
+!data/spambase.csv
 
 # Generated visualization files
 *.png
