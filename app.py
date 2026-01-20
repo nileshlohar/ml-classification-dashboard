@@ -11,7 +11,8 @@ import seaborn as sns
 import plotly.graph_objects as go
 import plotly.express as px
 from model.classifier import ModelTrainer
-from model.utils import validate_dataset, preprocess_data, get_sample_dataset
+from model import utils as model_utils
+from model.utils import preprocess_data, get_sample_dataset
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -294,7 +295,7 @@ if st.session_state.data_loaded:
         st.metric("Categorical Features", df.select_dtypes(include=['object']).shape[1])
 
     # Validate dataset
-    is_valid, message, warnings = validate_dataset(df, strict=True)
+    is_valid, message, warnings = model_utils.validate_dataset(df, strict=True)
 
     # Store validation result in session state
     st.session_state.dataset_valid = is_valid
