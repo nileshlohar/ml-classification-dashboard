@@ -337,10 +337,9 @@ if st.session_state.data_loaded:
         st.write("**Target Variable Distribution:**")
         target_counts = df[target_column].value_counts()
         # Convert to DataFrame with proper column names to avoid shaking
-        target_df = pd.DataFrame({
-            'Class': target_counts.index.astype(str),
-            'Count': target_counts.values
-        })
+        target_df = target_counts.reset_index()
+        target_df.columns = ['Class', 'Count']
+        target_df['Class'] = target_df['Class'].astype(str)
         st.dataframe(target_df, hide_index=True, width=350)
 
     with col2:
