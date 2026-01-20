@@ -75,7 +75,7 @@ with st.sidebar:
         uploaded_file = st.file_uploader(
             "Upload your dataset (CSV or Excel)",
             type=['csv', 'xlsx', 'xls'],
-            help="Minimum 500 instances and 12 features required"
+            help="⚠️ Must match spambase format: 58 columns (57 features + target)"
         )
 
     st.markdown("---")
@@ -155,9 +155,32 @@ def load_data(uploaded_file, use_sample):
                 df = pd.read_excel(uploaded_file)
             st.success(f"✅ Dataset '{uploaded_file.name}' loaded successfully!")
 
+        # Basic validation
+        if df.empty:
+            st.error("❌ The uploaded file is empty!")
+            return None
+
+        if df.shape[0] < 1:
+            st.error("❌ The dataset has no rows!")
+            return None
+
+        if df.shape[1] < 2:
+            st.error("❌ The dataset must have at least 2 columns (features + target)!")
+            return None
+
         return df
+    except pd.errors.EmptyDataError:
+        st.error("❌ The uploaded file is empty or has no data!")
+        return None
+    except pd.errors.ParserError as e:
+        st.error(f"❌ Error parsing the file. Please ensure it's a valid CSV/Excel file: {str(e)}")
+        return None
+    except UnicodeDecodeError:
+        st.error("❌ File encoding error. Please ensure the file is UTF-8 encoded or try saving it as CSV again.")
+        return None
     except Exception as e:
         st.error(f"❌ Error loading dataset: {str(e)}")
+        st.info("💡 Tip: Make sure your file is a valid CSV or Excel file with proper formatting.")
         return None
 
 # Load dataset
@@ -208,21 +231,29 @@ else:
     with col1:
         st.info("👈 Please upload a CSV or Excel file using the file uploader in the sidebar.")
         st.markdown("""
-        **Requirements:**
-        - ✅ Minimum 500 instances
-        - ✅ Minimum 12 features
-        - ✅ CSV or Excel format
-        - ✅ Must include a target column
+        **⚠️ IMPORTANT: Only Spambase Format Accepted**
+
+        Your uploaded dataset must:
+        - ✅ Have exactly 58 columns (57 features + target)
+        - ✅ Use the exact same column names as spambase
+        - ✅ Have 'target' as the last column (binary: 0 or 1)
+        - ✅ Have at least 100 instances
+        - ✅ Each class must have at least 2 samples
+
+        **Why this restriction?**
+        - Prevents stratification errors
+        - Ensures consistent model training
+        - Pre-trained models are spambase-specific
         """)
 
     with col2:
-        st.markdown("### 💡 Download our sample!")
+        st.markdown("### 💡 Download the sample dataset!")
         st.markdown("""
         **Spambase Dataset**
         - 📊 4,601 instances
         - 📈 58 features (57 + target)
         - 🎯 Binary classification (spam detection)
-        - ✅ Ready to use
+        - ✅ Use this as a template for your data
         """)
 
         # Load the spambase dataset for download
@@ -263,11 +294,23 @@ if st.session_state.data_loaded:
         st.metric("Categorical Features", df.select_dtypes(include=['object']).shape[1])
 
     # Validate dataset
-    is_valid, message = validate_dataset(df)
+    is_valid, message, warnings = validate_dataset(df, strict=True)
+
+    # Store validation result in session state
+    st.session_state.dataset_valid = is_valid
+
     if is_valid:
         st.success(f"✅ {message}")
     else:
-        st.warning(f"⚠️ {message}")
+        st.error(f"❌ {message}")
+        st.error("**Your dataset does not match the required spambase format.**")
+        st.info("""
+        **How to fix:**
+        1. Download the sample dataset using the button above
+        2. Use it as a template for your data
+        3. Ensure you have exactly 58 columns with the same names
+        4. The last column must be 'target' with binary values (0 or 1)
+        """)
 
     # Display dataset
     with st.expander("📊 View Dataset", expanded=False):
@@ -327,7 +370,8 @@ if st.session_state.data_loaded:
     if (pretrained_available and
         not st.session_state.models_trained and
         len(selected_models) > 0 and
-        'auto_loaded' not in st.session_state):
+        'auto_loaded' not in st.session_state and
+        st.session_state.get('dataset_valid', False)):  # Only if dataset is valid
 
         with st.spinner("📂 Loading pre-trained models..."):
             try:
@@ -380,88 +424,102 @@ if st.session_state.data_loaded:
 
     # Show "Train New Models" button
     if len(selected_models) > 0 and not st.session_state.models_trained:
-        if st.button("🚀 Train New Models", type="primary", use_container_width=True):
-            with st.spinner("🔄 Training models... This may take a few moments..."):
-                try:
-                    # Preprocess data
-                    X_train, X_test, y_train, y_test, feature_names, label_encoder = preprocess_data(
-                        df, target_column, test_size=test_size/100, random_state=random_seed
-                    )
+        # Check if dataset is valid
+        dataset_valid = st.session_state.get('dataset_valid', False)
 
-                    # Initialize trainer
-                    trainer = ModelTrainer(random_state=random_seed)
+        if not dataset_valid:
+            st.error("⚠️ Cannot train models: Dataset validation failed. Please upload a valid dataset in spambase format.")
+            st.button("🚀 Train New Models", type="primary", use_container_width=True, disabled=True)
+        else:
+            if st.button("🚀 Train New Models", type="primary", use_container_width=True):
+                with st.spinner("🔄 Training models... This may take a few moments..."):
+                    try:
+                        # Preprocess data
+                        X_train, X_test, y_train, y_test, feature_names, label_encoder = preprocess_data(
+                            df, target_column, test_size=test_size/100, random_state=random_seed
+                        )
 
-                    # Train only selected models
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
+                        # Initialize trainer
+                        trainer = ModelTrainer(random_state=random_seed)
 
-                    for idx, model_name in enumerate(selected_models):
-                        status_text.text(f"Training {model_name}...")
-                        trainer.train_model(model_name, X_train, y_train)
-                        trainer.evaluate_model(model_name, X_test, y_test)
-                        progress_bar.progress((idx + 1) / len(selected_models))
+                        # Train only selected models
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
 
-                    status_text.text("✅ All models trained successfully!")
-                    progress_bar.empty()
-                    status_text.empty()
+                        for idx, model_name in enumerate(selected_models):
+                            status_text.text(f"Training {model_name}...")
+                            trainer.train_model(model_name, X_train, y_train)
+                            trainer.evaluate_model(model_name, X_test, y_test)
+                            progress_bar.progress((idx + 1) / len(selected_models))
 
-                    # Store in session state
-                    st.session_state.models_trained = True
-                    st.session_state.trainer = trainer
-                    st.session_state.X_test = X_test
-                    st.session_state.y_test = y_test
-                    st.session_state.label_encoder = label_encoder
+                        status_text.text("✅ All models trained successfully!")
+                        progress_bar.empty()
+                        status_text.empty()
 
-                    st.success("✅ All models trained and evaluated successfully!")
-                    st.rerun()
+                        # Store in session state
+                        st.session_state.models_trained = True
+                        st.session_state.trainer = trainer
+                        st.session_state.X_test = X_test
+                        st.session_state.y_test = y_test
+                        st.session_state.label_encoder = label_encoder
 
-                except Exception as e:
-                    st.error(f"❌ Error during training: {str(e)}")
-                    import traceback
-                    st.code(traceback.format_exc())
+                        st.success("✅ All models trained and evaluated successfully!")
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ Error during training: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
     elif len(selected_models) == 0:
         st.warning("⚠️ Please select at least one model to train.")
 
     # Show "Retrain Models" button when models are already trained
     if st.session_state.models_trained and len(selected_models) > 0:
-        if st.button("🔄 Retrain Models", type="secondary", use_container_width=True):
-            with st.spinner("🔄 Retraining models... This may take a few moments..."):
-                try:
-                    # Preprocess data
-                    X_train, X_test, y_train, y_test, feature_names, label_encoder = preprocess_data(
-                        df, target_column, test_size=test_size/100, random_state=random_seed
-                    )
+        # Check if dataset is valid
+        dataset_valid = st.session_state.get('dataset_valid', False)
 
-                    # Initialize trainer
-                    trainer = ModelTrainer(random_state=random_seed)
+        if not dataset_valid:
+            st.error("⚠️ Cannot retrain models: Dataset validation failed. Please upload a valid dataset in spambase format.")
+            st.button("🔄 Retrain Models", type="secondary", use_container_width=True, disabled=True)
+        else:
+            if st.button("🔄 Retrain Models", type="secondary", use_container_width=True):
+                with st.spinner("🔄 Retraining models... This may take a few moments..."):
+                    try:
+                        # Preprocess data
+                        X_train, X_test, y_train, y_test, feature_names, label_encoder = preprocess_data(
+                            df, target_column, test_size=test_size/100, random_state=random_seed
+                        )
 
-                    # Train only selected models
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
+                        # Initialize trainer
+                        trainer = ModelTrainer(random_state=random_seed)
 
-                    for idx, model_name in enumerate(selected_models):
-                        status_text.text(f"Training {model_name}...")
-                        trainer.train_model(model_name, X_train, y_train)
-                        trainer.evaluate_model(model_name, X_test, y_test)
-                        progress_bar.progress((idx + 1) / len(selected_models))
+                        # Train only selected models
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
 
-                    status_text.text("✅ All models retrained successfully!")
-                    progress_bar.empty()
-                    status_text.empty()
+                        for idx, model_name in enumerate(selected_models):
+                            status_text.text(f"Training {model_name}...")
+                            trainer.train_model(model_name, X_train, y_train)
+                            trainer.evaluate_model(model_name, X_test, y_test)
+                            progress_bar.progress((idx + 1) / len(selected_models))
 
-                    # Store in session state
-                    st.session_state.trainer = trainer
-                    st.session_state.X_test = X_test
-                    st.session_state.y_test = y_test
-                    st.session_state.label_encoder = label_encoder
+                        status_text.text("✅ All models retrained successfully!")
+                        progress_bar.empty()
+                        status_text.empty()
 
-                    st.success("✅ All models retrained and evaluated successfully!")
-                    st.rerun()
+                        # Store in session state
+                        st.session_state.trainer = trainer
+                        st.session_state.X_test = X_test
+                        st.session_state.y_test = y_test
+                        st.session_state.label_encoder = label_encoder
 
-                except Exception as e:
-                    st.error(f"❌ Error during training: {str(e)}")
-                    import traceback
-                    st.code(traceback.format_exc())
+                        st.success("✅ All models retrained and evaluated successfully!")
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ Error during training: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
 
 # Display results
 if st.session_state.models_trained:
@@ -473,7 +531,14 @@ if st.session_state.models_trained:
     # Results table
     results_df = trainer.get_results_dataframe()
     st.markdown("### 📋 Evaluation Metrics Table")
-    st.dataframe(results_df, use_container_width=True, hide_index=True)
+    # Calculate exact height: header (35px) + rows (35px each)
+    table_height = 35 * (len(results_df) + 1)
+    st.dataframe(
+        results_df,
+        use_container_width=True,
+        hide_index=True,
+        height=table_height
+    )
 
     # Download results
     csv = results_df.to_csv(index=False)
@@ -583,7 +648,13 @@ if st.session_state.models_trained:
                 ]
             }
             metrics_table_df = pd.DataFrame(metrics_dict)
-            st.dataframe(metrics_table_df, hide_index=True, use_container_width=True)
+            # Calculate exact height: 7 rows (header + 6 metrics) × 35px
+            st.dataframe(
+                metrics_table_df,
+                hide_index=True,
+                use_container_width=True,
+                height=245  # 7 rows × 35px = 245px
+            )
 
     with col2:
         if selected_model_cm in trainer.results:

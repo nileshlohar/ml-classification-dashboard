@@ -23,8 +23,12 @@ def main():
     print()
 
     # Validate dataset
-    _, message = validate_dataset(df)
+    _, message, warnings_list = validate_dataset(df, strict=True)
     print(f"🔍 Validation: {message}")
+    if warnings_list:
+        print("⚠️  Warnings:")
+        for warning in warnings_list:
+            print(f"   - {warning}")
     print()
 
     # Display dataset info

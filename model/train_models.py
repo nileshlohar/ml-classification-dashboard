@@ -55,8 +55,12 @@ def main():
     print(df.describe())
 
     # Validate dataset
-    is_valid, message = validate_dataset(df)
+    is_valid, message, warnings_list = validate_dataset(df, strict=True)
     print(f"\nValidation: {message}")
+    if warnings_list:
+        print("⚠️  Warnings:")
+        for warning in warnings_list:
+            print(f"   - {warning}")
 
     # Target distribution
     target_col = 'target'
