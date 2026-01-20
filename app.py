@@ -44,6 +44,13 @@ st.markdown("""
         border-radius: 0.5rem;
         margin: 0.5rem 0;
     }
+    /* Make selectbox cursor pointer */
+    div[data-baseweb="select"] > div {
+        cursor: pointer !important;
+    }
+    div[data-baseweb="select"] * {
+        cursor: pointer !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
